@@ -173,7 +173,9 @@ echo
 echo "EXPECTED: a critical finding, CVE-2020-14343 (arbitrary code execution via"
 echo "yaml.load/FullLoader, fixed in 5.4), and CVE-2020-1747 (fixed in 5.3.1). The"
 echo "artifact auto-quarantines the moment the scan completes, and the download"
-echo "above is now HTTP 409 CONFLICT naming the exact policy and finding count."
+echo "above is now HTTP 409 CONFLICT (\"Artifact is quarantined and pending"
+echo "security review\"). The policy name and finding count are on the"
+echo "quarantine record printed just above, not in the 409 body itself."
 echo
 echo "Artifact is HELD. Open the UI to see it and release it there:"
 echo "  ${AK_WEB_URL}/repositories  ->  team-packages  ->  pyyaml"
