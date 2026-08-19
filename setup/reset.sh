@@ -23,6 +23,10 @@ for id in $(ak_api GET /api/v1/curation/rules | jq -r '(if type=="array" then . 
   ak_api DELETE "/api/v1/curation/rules/${id}" >/dev/null; echo "rule ${id} deleted"
 done
 
+echo "== Disable scan-on-proxy enforcement on pypi-proxy (Act 2 step 1's live flip) =="
+ak_api PUT /api/v1/repositories/pypi-proxy/security \
+  '{"scan_enabled": false, "scan_on_proxy": false}' >/dev/null; echo done
+
 echo "== Delete demo-cve-gate and demo-global-cve scan policies =="
 for id in $(ak_api GET /api/v1/security/policies | jq -r '(if type=="array" then . else .items end) | map(select(.name=="demo-cve-gate" or .name=="demo-global-cve")) | .[].id'); do
   ak_api DELETE "/api/v1/security/policies/${id}" >/dev/null; echo "policy ${id} deleted"

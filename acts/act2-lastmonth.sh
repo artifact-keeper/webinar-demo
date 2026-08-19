@@ -13,9 +13,12 @@
 # not_scanned state again needs fresh volumes, or a different proxy-cached
 # artifact picked up via the natural pip-download flow.
 #
-# Step 1's closing beat (the serve-time block) needs scan_on_proxy=true on
-# pypi-proxy's scan_configs row -- see the comment at that beat for the exact
-# PUT call and why it is not issued from here.
+# Step 1 itself flips pypi-proxy's scan_configs row to scan_on_proxy=true
+# (deliberately NOT done in setup/configure.sh: configure runs before
+# warm-cache, and pre-enabling this would scan urllib3 at warm time,
+# destroying the "cached before anyone looked" premise this act opens with).
+# That flip is a live, on-record admin action, and it stays ON afterward --
+# setup/reset.sh turns it back off as part of a full reset.
 set -uo pipefail   # deliberately no -e: a 4xx/5xx response IS the demo
 source "$(dirname "$0")/../setup/lib.sh"
 
@@ -96,13 +99,16 @@ echo
 echo "EXPECTED: a CycloneDX SBOM generated from the cached artifact's recorded"
 echo "package inventory. The proxy cache is not a blind spot anymore."
 echo
-# This beat requires scan_on_proxy=true on pypi-proxy's scan_configs row
-# (PUT /api/v1/repositories/pypi-proxy/security {"scan_enabled":true,
-# "scan_on_proxy":true}). That is repo-wide, blast-radius-beyond-this-script
-# config, not something this act should silently flip on a shared stack --
-# it belongs in setup/configure.sh next to the repo's other policy setup.
-# Verified live with it set: 403 {"error":"scan_blocked",...}. Without it,
-# this returns 200 (nothing enforces the stored verdict at serve time).
+echo "A rescan alone does not change what gets served -- it is a record, not"
+echo "yet an enforcement action. Turning enforcement on for this proxy is:"
+echo
+echo "\$ PUT /api/v1/repositories/pypi-proxy/security  {\"scan_enabled\":true,\"scan_on_proxy\":true}"
+ak_api PUT "/api/v1/repositories/pypi-proxy/security" \
+  '{"scan_enabled":true,"scan_on_proxy":true}' | jq -c .
+echo
+echo "One call turns on scan-aware serving for this proxy. The verdict the"
+echo "rescan just recorded now gates every download of these bytes:"
+echo
 echo "\$ curl -i ${PIP_INDEX}/urllib3/$(basename "$U3PATH")   (the same file, after the rescan)"
 show_get "${PIP_INDEX}/urllib3/$(basename "$U3PATH")"
 echo

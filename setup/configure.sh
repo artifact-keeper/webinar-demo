@@ -45,10 +45,15 @@ else
 fi
 
 echo "== Scan policy: quarantine high/critical CVEs on pypi-proxy =="
-# repository-scoped policy on pypi-proxy. On 1.8.0 this powers the
-# serve-time scan_blocked gate that blocks downloads of proxy-cached
-# artifacts flagged vulnerable by a rescan (verified live). Load-bearing
-# for Act 2, not dead weight.
+# repository-scoped security POLICY on pypi-proxy (a /api/v1/security/policies
+# row). This is a DIFFERENT subsystem from the proxy serve-time scan_blocked
+# gate: that gate is driven entirely by the repo's scan config
+# (scan_on_proxy, at PUT /repositories/{key}/security), which Act 2 step 1
+# flips on live, on the record, as part of its own narrative -- it is
+# deliberately NOT enabled here (pre-enabling it before warm-cache would
+# scan urllib3 at warm time and destroy Act 2's "cached before anyone
+# looked" premise). This policy row is kept anyway as the repo-scoped
+# example shown alongside the global demo-global-cve policy below.
 repo_id=$(ak_repo_id pypi-proxy)
 have=$(ak_api GET /api/v1/security/policies \
   | jq -r '(if type=="array" then . else .items end) | map(select(.name=="demo-cve-gate")) | length')
