@@ -62,13 +62,38 @@ ak_login || exit 1
 # The package defaults to the latest boto3 release: boto3 ships near-daily,
 # so the latest release is almost always still inside the 14-day window.
 # AGE_GATE_PKG=name==version overrides.
-if [ -z "${AGE_GATE_PKG:-}" ]; then
+#
+# Step 1 and step 2 run as separate processes (single-step mode, one per
+# notebook cell) with a human UI approval in between, sometimes minutes
+# apart. Re-resolving "latest boto3" independently in each process risks
+# step 2 picking a version that shipped after step 1's -- one nobody
+# approved -- which would 451 live instead of the promised 200. So step 1
+# (and `all`) persist their resolution to a file; step 2 reads it back
+# instead of re-resolving, unless AGE_GATE_PKG is explicitly set.
+AGEGATE_PKG_FILE="${DEMO_ROOT}/tmp/agegate-pkg"
+if [ "$STEP" = "2" ] && [ -z "${AGE_GATE_PKG:-}" ] && [ -s "$AGEGATE_PKG_FILE" ]; then
+  AGE_GATE_PKG=$(cat "$AGEGATE_PKG_FILE")
+elif [ -z "${AGE_GATE_PKG:-}" ]; then
   _v=$(curl -fsS https://pypi.org/pypi/boto3/json | jq -r .info.version)
+  if [ -z "$_v" ] || [ "$_v" = "null" ]; then
+    echo "Could not resolve boto3's latest version from pypi.org. Check network, or set AGE_GATE_PKG=name==version explicitly."
+    exit 1
+  fi
   AGE_GATE_PKG="boto3==${_v}"
 fi
 AGE_GATE_NAME="${AGE_GATE_PKG%%==*}"; AGE_GATE_VERSION="${AGE_GATE_PKG##*==}"
 AGE_GATE_WHEEL=$(curl -fsS "https://pypi.org/pypi/${AGE_GATE_NAME}/${AGE_GATE_VERSION}/json" \
   | jq -r '.urls[] | select(.packagetype=="bdist_wheel") | .filename' | head -1)
+if [ -z "$AGE_GATE_WHEEL" ]; then
+  echo "Could not resolve a wheel for ${AGE_GATE_PKG} from pypi.org. Check network, or set AGE_GATE_PKG=name==version explicitly."
+  exit 1
+fi
+
+# Only persist once the whole resolution (package AND wheel) succeeded, so a
+# failed run never poisons step 2's fallback with a resolution that turned
+# out to be bad.
+mkdir -p "$(dirname "$AGEGATE_PKG_FILE")"
+echo "$AGE_GATE_PKG" > "$AGEGATE_PKG_FILE"
 
 if want 1; then
 echo "--- ACT 3.1: the first wave is not for you ---"
