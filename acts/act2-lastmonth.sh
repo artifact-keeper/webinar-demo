@@ -82,6 +82,10 @@ ak_api GET "/api/v1/repositories/pypi-proxy/security/proxy-scans" \
 # wheel actually carries a package inventory the scanner can extract.
 U3PATH=$(ak_api GET "/api/v1/repositories/pypi-proxy/security/proxy-scans" \
   | jq -r '.items[] | select(.path | test("urllib3.*\\.whl$")) | .path' | head -1)
+if [ -z "$U3PATH" ]; then
+  echo "No urllib3 wheel found in the pypi-proxy cache. Run setup/warm-cache.sh first (inside the Jupyter terminal)."
+  exit 1
+fi
 echo
 echo "\$ POST .../proxy-scans/rescan  {\"path\": \"${U3PATH}\"}"
 ak_api POST "/api/v1/repositories/pypi-proxy/security/proxy-scans/rescan" \
