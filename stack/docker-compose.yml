@@ -1,0 +1,224 @@
+# =============================================================================
+# Artifact Keeper - Webinar Demo Compose File
+# =============================================================================
+#
+# Stack for the webinar demo. Keeps postgres, opensearch, trivy, backend, and
+# web, plus the scan-workspace-init container that the backend depends on,
+# and adds a locally built JupyterLab container that drives the whole demo.
+#
+# The backend and web images are pulled, pinned via ARTIFACT_KEEPER_VERSION
+# in .env. The jupyter image is the only one built locally (see ./jupyter).
+#
+# Container names and published host ports are all overridable
+# (AK_NAME_PREFIX, AK_API_PORT, AK_OPENSEARCH_PORT, AK_TRIVY_PORT,
+# AK_WEB_PORT, AK_JUPYTER_PORT); see .env for defaults and .env.local for
+# how to override them without committing changes.
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # Scan workspace ownership (init container)
+  # ---------------------------------------------------------------------------
+  # The backend (read-write) and Trivy (read-only) share a single
+  # scan_workspace named volume. This one-shot root init container chowns the
+  # volume to 1001:0 before the backend starts, matching the production
+  # compose (see artifact-keeper/docker-compose.yml, issue #1563).
+  scan-workspace-init:
+    image: alpine:3.23
+    container_name: ${AK_NAME_PREFIX:-webinar-demo}-scan-ws-init
+    user: "0:0"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        mkdir -p /scan-workspace
+        chown -R 1001:0 /scan-workspace
+        chmod 0775 /scan-workspace
+        echo "scan-workspace-init: volume owned by 1001:0"
+    volumes:
+      - scan_workspace:/scan-workspace
+    restart: "no"
+    healthcheck:
+      disable: true
+
+  # ---------------------------------------------------------------------------
+  # PostgreSQL
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: ${AK_NAME_PREFIX:-webinar-demo}-db
+    environment:
+      POSTGRES_USER: registry
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: artifact_registry
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    # No host port published: the backend reaches this over the internal
+    # compose network at postgres:5432. Publishing 30432 (the source
+    # compose's convention) collides with other AK dev stacks that also bind
+    # host port 30432 and isn't part of this demo's interface contract.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U registry -d artifact_registry"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # OpenSearch (full-text search engine)
+  # ---------------------------------------------------------------------------
+  opensearch:
+    image: opensearchproject/opensearch:2.19.1
+    container_name: ${AK_NAME_PREFIX:-webinar-demo}-opensearch
+    environment:
+      discovery.type: single-node
+      OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"
+      DISABLE_SECURITY_PLUGIN: "true"
+      DISABLE_INSTALL_DEMO_CONFIG: "true"
+    volumes:
+      - opensearch_data:/usr/share/opensearch/data
+    ports:
+      - "${AK_OPENSEARCH_PORT:-9200}:9200"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 30s
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Trivy (vulnerability scanner)
+  # ---------------------------------------------------------------------------
+  trivy:
+    image: ghcr.io/aquasecurity/trivy:0.69.3
+    container_name: ${AK_NAME_PREFIX:-webinar-demo}-trivy
+    command: ["server", "--listen", "0.0.0.0:8090"]
+    ports:
+      - "${AK_TRIVY_PORT:-8090}:8090"
+    volumes:
+      - trivy_cache:/root/.cache/trivy
+      - scan_workspace:/scan-workspace:ro
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Backend API server
+  # ---------------------------------------------------------------------------
+  backend:
+    image: ghcr.io/artifact-keeper/artifact-keeper-backend:${ARTIFACT_KEEPER_VERSION:-1.8.0}
+    container_name: ${AK_NAME_PREFIX:-webinar-demo}-backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      opensearch:
+        condition: service_healthy
+      scan-workspace-init:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgres://registry:${POSTGRES_PASSWORD}@postgres:5432/artifact_registry
+      JWT_SECRET: ${JWT_SECRET}
+      ADMIN_PASSWORD: ${AK_ADMIN_PASSWORD}
+      STORAGE_BACKEND: filesystem
+      # NOTE: the backend image is a hardened, shell-free, non-root (uid 1001)
+      # image that only pre-creates and chowns /data/storage. A fresh named
+      # volume mounted at any other path (e.g. the
+      # /var/lib/artifact-keeper/artifacts convention used elsewhere) comes up
+      # root:root and the backend fails with "Storage write failed:
+      # Permission denied" (verified empirically). Use the image's own path,
+      # matching the source compose.
+      STORAGE_PATH: /data/storage
+      # BACKUP_PATH and PLUGINS_DIR (and their volumes) from the source
+      # compose are intentionally dropped here: BACKUP_PATH isn't read
+      # anywhere in backend/src, and PLUGINS_DIR defaults harmlessly to
+      # ./plugins inside the container when unset.
+      OPENSEARCH_URL: http://opensearch:9200
+      # NOTE: trivy's server listens on 8090 (see the `trivy` service
+      # `command:` above and its published port), not 8080. Pointing this at
+      # :8080 would silently break vulnerability scanning without failing
+      # the backend healthcheck, so it is corrected here.
+      TRIVY_URL: http://trivy:8090
+      # Enables the dev-mode CORS predicate (any localhost/private-network
+      # origin, any port) so the browser at AK_WEB_URL can call this API
+      # directly. Without it the backend falls back to same-origin-only CORS
+      # and the web UI's client-side fetches to localhost:8080 are rejected.
+      ENVIRONMENT: development
+      RUST_LOG: info,artifact_keeper=debug
+      HOST: 0.0.0.0
+      PORT: 8080
+    ports:
+      - "${AK_API_PORT:-8080}:8080"
+    volumes:
+      - artifact_storage:/data/storage
+      - scan_workspace:/scan-workspace
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/livez"]
+      interval: 30s
+      timeout: 10s
+      start_period: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Web UI (Next.js)
+  # ---------------------------------------------------------------------------
+  web:
+    image: ghcr.io/artifact-keeper/artifact-keeper-web:${ARTIFACT_KEEPER_VERSION:-1.8.0}
+    container_name: ${AK_NAME_PREFIX:-webinar-demo}-web
+    depends_on:
+      backend:
+        condition: service_started
+    environment:
+      # Client-side (browser) API base URL. Tracks the backend's published
+      # host port.
+      NEXT_PUBLIC_API_URL: http://localhost:${AK_API_PORT:-8080}
+      # Server-side (Next.js middleware) proxy target, reached over the
+      # internal compose network.
+      BACKEND_URL: http://backend:8080
+    ports:
+      - "${AK_WEB_PORT:-3000}:3000"
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # JupyterLab (the demo surface)
+  # ---------------------------------------------------------------------------
+  # The whole demo is driven from JupyterLab's built-in terminal, so nothing
+  # needs to be installed on the host except Docker. The repo is mounted at
+  # /home/jovyan/work; pip and the Hugging Face CLI inside this container are
+  # pre-pointed at Artifact Keeper.
+  jupyter:
+    build: ./jupyter
+    container_name: ${AK_NAME_PREFIX:-webinar-demo}-jupyter
+    depends_on:
+      backend:
+        condition: service_started
+    environment:
+      AK_URL: http://backend:8080
+      AK_WEB_URL: http://localhost:${AK_WEB_PORT:-3000}
+      PIP_INDEX_URL: http://backend:8080/pypi/pypi-proxy/simple
+      PIP_TRUSTED_HOST: backend
+      HF_ENDPOINT: http://backend:8080/huggingface/hf-proxy
+      HF_HOME: /home/jovyan/work/.hf-cache
+    command:
+      - start-notebook.py
+      - --IdentityProvider.token=artifact-keeper-demo
+      - --ServerApp.root_dir=/home/jovyan/work
+    ports:
+      - "${AK_JUPYTER_PORT:-8888}:8888"
+    volumes:
+      - ../:/home/jovyan/work
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+  artifact_storage:
+    driver: local
+  trivy_cache:
+    driver: local
+  opensearch_data:
+    driver: local
+  scan_workspace:
+    driver: local
+
+networks:
+  default:
+    name: ${AK_NAME_PREFIX:-webinar-demo}-demo-network

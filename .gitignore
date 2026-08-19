@@ -1,0 +1,5 @@
+.hf-cache/
+.ipynb_checkpoints/
+tmp/
+*.whl
+stack/.env.local
