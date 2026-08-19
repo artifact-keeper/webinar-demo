@@ -43,21 +43,29 @@ Fill in "actual" during rehearsal to catch beats that run long.
 
 | Beat | Command | Expected output | Talk line | Target | Actual |
 |---|---|---|---|---|---|
-| Act 1.1 cold open | `bash acts/act1-gate.sh 1` | `pip download requests` and `hf download sentence-transformers/all-MiniLM-L6-v2` both complete from cache | Nothing about the developer's workflow changed. The registry is just where packages come from now. | | |
-| Act 1.2 typosquat | `bash acts/act1-gate.sh 2` | `pip download requessts` fails with pip's generic "no matching distribution"; `curl -i` on the proxy index returns HTTP 403, `error: curation_blocked`, reason "Typosquat of requests: blocked by policy" | pip can't tell you this was policy. The registry can. | | |
-| Act 1.3 known-CVE package | `bash acts/act1-gate.sh 3` | pyyaml 5.3 published to `team-packages`, downloads 200 before the scan, scan finds CVE-2020-14343 (critical) and CVE-2020-1747, artifact auto-quarantines, download now 409 | The moment the scan completes, the artifact is held. Nobody had to act. | | |
-| *(UI)* quarantine banner | open web UI, `/repositories` -> `team-packages` -> `pyyaml` | Held banner visible on the artifact detail page | This isn't a log line, it's the state of the artifact itself. | | |
-| *(stretch)* on-the-record release | `bash acts/act1-gate.sh release` | Every critical/high finding acknowledged, quarantine released, download returns 200 | Releasing the hold alone isn't enough. The scan policy is a second gate; it keeps blocking until every finding is acknowledged too. | | |
-| **Act 1 total** | | | | **4:00** | |
-| Act 2.1 rescan + SBOM + enforcement flip | `bash acts/act2-lastmonth.sh 1` | Rescan of the cached urllib3 1.24.1 wheel returns state `vulnerable`, 12 findings (CVE-2019-11324, CVE-2019-11236, CVE-2020-26137, and others); CycloneDX SBOM returned for the same cached bytes; `PUT .../security` flips `scan_on_proxy` on; the same file that just served cleanly now returns 403 `scan_blocked` for everyone | That gate went up today. What about everything that came through before it existed? Now watch it flip: same bytes, same cache, blocked the instant we turn it on. | | |
-| Act 2.2 blast radius | `bash acts/act2-lastmonth.sh 2` | Blast-radius query on CVE-2020-14343 returns affected artifacts and repos in `team-packages`, actual downloaders, and access-based latent radius | This is the Tuesday-morning question: who has it, who pulled it, who could have. | | |
-| *(UI)* blast radius page | open web UI, `/security/blast-radius` | Same CVE data rendered in the UI | | | |
-| Act 2.3 quarantine-now | `bash acts/act2-lastmonth.sh 3` | Clean `requests` wheel published and downloads 200; admin quarantines it with a custom reason; download returns 409 (generic body, no reason echoed); `GET /quarantine/{id}` shows the exact reason text; release restores 200 | Not every hold starts with a scan finding. This one is just a decision, on the record. | | |
-| **Act 2 total** | | | | **4:00** | |
-| Act 3.1 age gate | `bash acts/act3-agegate.sh 1` | `pip download` of the latest boto3 release (under 14 days old) finds nothing in the index; `curl -i` on the wheel directly returns HTTP 451, `error: age_gate_blocked`, `min_age_days: 14`, a `review_id` | xz-utils-class compromises get caught in days. This gate means you were never in the first wave. | | |
-| *(UI)* approve the review | open web UI, `/age-gate`, approve the pending review | Review moves from pending to approved | A human said yes, on the record. | | |
-| Act 3.2 post-approval | `bash acts/act3-agegate.sh 2` | Same request now returns HTTP 200 | Next time, you're two weeks behind the blast before it ever reaches you. | | |
-| **Act 3 total** | | | | **3:00** | |
+| Act 1.1 cold open | `bash acts/act1-gate.sh 1` | `pip download requests` and `hf download sentence-transformers/all-MiniLM-L6-v2` both complete from cache | Nothing about the developer's workflow changed. The registry is just where packages come from now. | | 2.9s |
+| Act 1.2 typosquat | `bash acts/act1-gate.sh 2` | `pip download requessts` fails with pip's generic "no matching distribution"; `curl -i` on the proxy index returns HTTP 403, `error: curation_blocked`, reason "Typosquat of requests: blocked by policy" | pip can't tell you this was policy. The registry can. | | 0.3s |
+| Act 1.3 known-CVE package | `bash acts/act1-gate.sh 3` | pyyaml 5.3 published to `team-packages`, downloads 200 before the scan, scan finds CVE-2020-14343 (critical) and CVE-2020-1747, artifact auto-quarantines, download now 409 | The moment the scan completes, the artifact is held. Nobody had to act. | | 5.2s |
+| *(UI)* quarantine banner | open web UI, `/repositories` -> `team-packages` -> `pyyaml` | Held banner visible on the artifact detail page | This isn't a log line, it's the state of the artifact itself. | | n/a (UI, not timed) |
+| *(stretch)* on-the-record release | `bash acts/act1-gate.sh release` | Every critical/high finding acknowledged, quarantine released, download returns 200 | Releasing the hold alone isn't enough. The scan policy is a second gate; it keeps blocking until every finding is acknowledged too. | | 0.1s |
+| **Act 1 total** | | | | **4:00** | **8.5s** (8.6s with the stretch beat) |
+| Act 2.1 rescan + SBOM + enforcement flip | `bash acts/act2-lastmonth.sh 1` | Rescan of the cached urllib3 1.24.1 wheel returns state `vulnerable`, 12 findings (CVE-2019-11324, CVE-2019-11236, CVE-2020-26137, and others); CycloneDX SBOM returned for the same cached bytes; `PUT .../security` flips `scan_on_proxy` on; the same file that just served cleanly now returns 403 `scan_blocked` for everyone | That gate went up today. What about everything that came through before it existed? Now watch it flip: same bytes, same cache, blocked the instant we turn it on. | | 1.8s |
+| Act 2.2 blast radius | `bash acts/act2-lastmonth.sh 2` | Blast-radius query on CVE-2020-14343 returns affected artifacts and repos in `team-packages`, actual downloaders, and access-based latent radius | This is the Tuesday-morning question: who has it, who pulled it, who could have. | | 0.1s |
+| *(UI)* blast radius page | open web UI, `/security/blast-radius` | Same CVE data rendered in the UI | | | n/a (UI, not timed) |
+| Act 2.3 quarantine-now | `bash acts/act2-lastmonth.sh 3` | Clean `requests` wheel published and downloads 200; admin quarantines it with a custom reason; download returns 409 (generic body, no reason echoed); `GET /quarantine/{id}` shows the exact reason text; release restores 200 | Not every hold starts with a scan finding. This one is just a decision, on the record. | | 0.7s |
+| **Act 2 total** | | | | **4:00** | **2.6s** |
+| Act 3.1 age gate | `bash acts/act3-agegate.sh 1` | `pip download` of the latest boto3 release (under 14 days old) finds nothing in the index; `curl -i` on the wheel directly returns HTTP 451, `error: age_gate_blocked`, `min_age_days: 14`, a `review_id` | xz-utils-class compromises get caught in days. This gate means you were never in the first wave. | | 1.0s |
+| *(UI)* approve the review | open web UI, `/age-gate`, approve the pending review | Review moves from pending to approved | A human said yes, on the record. | | 0.1s (API fallback used instead of the UI: `ak_api POST .../age-gate/reviews/<id>/approve`) |
+| Act 3.2 post-approval | `bash acts/act3-agegate.sh 2` | Same request now returns HTTP 200 | Next time, you're two weeks behind the blast before it ever reaches you. | | 0.4s |
+| **Act 3 total** | | | | **3:00** | **1.5s** |
+
+Actuals above are command execution time only (each act-script invocation
+timed with `time docker exec ... bash acts/actN-*.sh <step>`, serialized
+against one shared `AK_TOKEN`), measured on a warm, freshly cold-rebuilt
+stack. Presenter narration, pauses, and the UI moments (quarantine banner,
+blast-radius page, age-gate approval click) are all on top of these numbers
+and are the bulk of the real 12 minutes; do not read this row as "the demo
+takes 13 seconds."
 
 ## The two UI moments
 

@@ -51,4 +51,4 @@ else
   echo "age-gate reviews NOT cleared (container ${DB_CONTAINER} unreachable); if a version was approved before, Act 3 Moment 2 may serve 200 instead of 451"
 fi
 
-echo "RESET COMPLETE: run setup/configure.sh to rebuild live."
+echo "RESET COMPLETE: run setup/preflight.sh (or: docker compose up -d) to reconfigure live."
