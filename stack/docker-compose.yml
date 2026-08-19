@@ -212,8 +212,9 @@ services:
   # ---------------------------------------------------------------------------
   # Configures the registry and warms the caches on every compose up, so a
   # plain `docker compose up` lands on a demo-ready stack. Both steps are
-  # idempotent; repeat runs are fast no-ops. Uses the same image as the
-  # jupyter service, so nothing extra is built or pulled.
+  # idempotent; repeat runs are fast no-ops. Builds from the same context as
+  # the jupyter service (a second image, since entrypoint/command differ),
+  # so nothing extra is pulled and the build reuses jupyter's cached layers.
   seed:
     build: ./jupyter
     container_name: ${AK_NAME_PREFIX:-webinar-demo}-seed

@@ -7,6 +7,8 @@
 set -uo pipefail   # deliberately no -e: a 4xx/5xx response IS the demo
 source "$(dirname "$0")/../setup/lib.sh"
 
+[ -n "${PIP_INDEX_URL:-}" ] || { echo "Run this inside the JupyterLab terminal (see README)."; exit 1; }
+
 PIP_INDEX="${PIP_INDEX_URL:-${AK_URL}/pypi/pypi-proxy/simple}"
 # One of the few prebuilt wheels PyPI published for 5.3 -- needed because a
 # bare sdist tarball did not get parsed for CVEs (a wheel's dist-info layout
@@ -51,6 +53,7 @@ latest_team_pyyaml_row() {
   ak_api GET /api/v1/repositories/team-packages/artifacts \
     | jq -r '[(.items // .)[] | select(.path | test("pyyaml"; "i"))]
              | sort_by(.created_at) | reverse | .[0]
+             | select(.id != null)
              | "\(.id)\t\(.path)" // empty'
 }
 
@@ -146,7 +149,8 @@ if [ -n "${CVE_ARTIFACT_ID:-}" ]; then
   SCAN_IDS=$(ak_api POST /api/v1/security/scan "{\"artifact_id\":\"${CVE_ARTIFACT_ID}\"}" | jq -r '.scan_result_ids[]?')
   echo
   echo "\$ scanning..."
-  for _ in 1 2 3 4 5 6 7 8; do
+  STILL_RUNNING=0
+  for _ in $(seq 1 30); do
     sleep 2
     STILL_RUNNING=0
     for id in $SCAN_IDS; do
@@ -155,6 +159,9 @@ if [ -n "${CVE_ARTIFACT_ID:-}" ]; then
     done
     [ "$STILL_RUNNING" = "0" ] && break
   done
+  if [ "$STILL_RUNNING" = "1" ]; then
+    echo "WARNING: scan still running after 60s. The 409 check below may not have kicked in yet."
+  fi
   echo
   echo "Findings:"
   for id in $SCAN_IDS; do

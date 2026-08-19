@@ -22,6 +22,8 @@
 set -uo pipefail   # deliberately no -e: a 4xx/5xx response IS the demo
 source "$(dirname "$0")/../setup/lib.sh"
 
+[ -n "${PIP_INDEX_URL:-}" ] || { echo "Run this inside the JupyterLab terminal (see README)."; exit 1; }
+
 PIP_INDEX="${PIP_INDEX_URL:-${AK_URL}/pypi/pypi-proxy/simple}"
 
 DL=$(mktemp -d); trap 'rm -rf "$DL"' EXIT
@@ -142,7 +144,14 @@ echo "--- ACT 2.3: decide you do not trust it, right now ---"
 echo "\$ pip download requests   (cache hit, clean artifact, no findings anywhere)"
 REQ_DIR=$(freshdir)
 pip download requests --no-deps -d "$REQ_DIR"
-REQ_WHEEL=$(ls "$REQ_DIR"/requests-*.whl | head -1)
+shopt -s nullglob
+REQ_WHEEL_CANDIDATES=("$REQ_DIR"/requests-*.whl)
+shopt -u nullglob
+if [ ${#REQ_WHEEL_CANDIDATES[@]} -eq 0 ]; then
+  echo "No requests wheel found in ${REQ_DIR} after pip download. Not continuing."
+  exit 1
+fi
+REQ_WHEEL="${REQ_WHEEL_CANDIDATES[0]}"
 REQ_VERSION=$(basename "$REQ_WHEEL" | sed -E 's/^requests-([0-9][^-]*)-.*/\1/')
 # Same reason as Act 1's CVE_RUN_TAG: a random PEP 427 build-tag segment so
 # every run publishes to a never-before-used path in team-packages. Without
@@ -167,6 +176,10 @@ _row=$(ak_api GET /api/v1/repositories/team-packages/artifacts \
 AID="${_row%%$'\t'*}"
 REQ_ARTIFACT_PATH="${_row#*$'\t'}"
 echo "artifact_id=${AID:-<not found>}"
+if [ -z "${AID:-}" ] || [ "$AID" = "null" ]; then
+  echo "Could not find the artifact just published (path containing ${REQ_UPLOAD_NAME}) in team-packages. Not continuing: quarantining a missing artifact id would silently do nothing."
+  exit 1
+fi
 DOWNLOAD_URL="${AK_URL}/pypi/team-packages/simple/requests/${REQ_UPLOAD_NAME}"
 
 echo

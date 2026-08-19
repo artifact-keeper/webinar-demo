@@ -7,6 +7,9 @@ is what attendees read; this is what you read before and during the call.
 
 **The day before:**
 
+If you created a `stack/.env.local` to override ports, append
+`--env-file stack/.env.local` to every plain-compose command below.
+
 1. Wipe the stack and bring it back on the cold path, to rehearse exactly
    what an attendee will see:
 
@@ -48,7 +51,7 @@ Fill in "actual" during rehearsal to catch beats that run long.
 | Act 1.3 known-CVE package | `bash acts/act1-gate.sh 3` | pyyaml 5.3 published to `team-packages`, downloads 200 before the scan, scan finds CVE-2020-14343 (critical) and CVE-2020-1747, artifact auto-quarantines, download now 409 | The moment the scan completes, the artifact is held. Nobody had to act. | | 5.2s |
 | *(UI)* quarantine banner | open web UI, `/repositories` -> `team-packages` -> `pyyaml` | Held banner visible on the artifact detail page | This isn't a log line, it's the state of the artifact itself. | | n/a (UI, not timed) |
 | *(stretch)* on-the-record release | `bash acts/act1-gate.sh release` | Every critical/high finding acknowledged, quarantine released, download returns 200 | Releasing the hold alone isn't enough. The scan policy is a second gate; it keeps blocking until every finding is acknowledged too. | | 0.1s |
-| **Act 1 total** | | | | **4:00** | **8.5s** (8.6s with the stretch beat) |
+| **Act 1 total** | | | | **4:00** | **8.4s** (8.5s with the stretch beat) |
 | Act 2.1 rescan + SBOM + enforcement flip | `bash acts/act2-lastmonth.sh 1` | Rescan of the cached urllib3 1.24.1 wheel returns state `vulnerable`, 12 findings (CVE-2019-11324, CVE-2019-11236, CVE-2020-26137, and others); CycloneDX SBOM returned for the same cached bytes; `PUT .../security` flips `scan_on_proxy` on; the same file that just served cleanly now returns 403 `scan_blocked` for everyone | That gate went up today. What about everything that came through before it existed? Now watch it flip: same bytes, same cache, blocked the instant we turn it on. | | 1.8s |
 | Act 2.2 blast radius | `bash acts/act2-lastmonth.sh 2` | Blast-radius query on CVE-2020-14343 returns affected artifacts and repos in `team-packages`, actual downloaders, and access-based latent radius | This is the Tuesday-morning question: who has it, who pulled it, who could have. | | 0.1s |
 | *(UI)* blast radius page | open web UI, `/security/blast-radius` | Same CVE data rendered in the UI | | | n/a (UI, not timed) |
@@ -67,7 +70,7 @@ blast-radius page, age-gate approval click) are all on top of these numbers
 and are the bulk of the real 12 minutes; do not read this row as "the demo
 takes 13 seconds."
 
-## The two UI moments
+## The three UI moments
 
 **Act 1: the quarantine banner.** After step 3, open `/repositories` ->
 `team-packages` -> `pyyaml` in the web UI. The held state is visible right
@@ -81,6 +84,10 @@ findings. If you release from the UI, you still need to run
 way) before the download actually returns 200. Simplest path during the
 live run: skip the UI Release button and just run the release step, which
 does both.
+
+**Act 2: the blast radius view.** After step 2, open
+`/security/blast-radius` in the web UI to show the same CVE-2020-14343 data
+the API call just returned, rendered for an incident review.
 
 **Act 3: the age-gate approval.** Between step 1 and step 2, approve the
 pending review at `/age-gate` in the web UI. If the UI isn't reachable for
@@ -104,7 +111,12 @@ All of these were verified live this session.
   returns 429 `RESCAN_THROTTLED`.
 - **The enforcement flip persists.** Act 2 step 1's `scan_on_proxy` flip on
   `pypi-proxy` stays on after the script finishes. Only `setup/reset.sh`
-  turns it back off.
+  turns it back off. This also persists into Act 3.2: the boto3 wheel that
+  post-approval download serves is unaffected on the package versions this
+  runbook has been tested against, but scan-on-proxy enforcement staying on
+  is a general condition that could, in principle, gate a different
+  package's bytes too, so do not assume it is a non-issue without checking
+  if you substitute a different package or version.
 - **Proxy scan state persists across `reset.sh`.** `setup/reset.sh` clears
   policy-level configuration, but scan state recorded on proxy-cached
   artifacts is not wiped. A pristine Act 2.1 (state `not_scanned` again)
@@ -141,8 +153,14 @@ going live:
   2.
 - `/age-gate` lists the pending review from Act 3 step 1 and its Approve
   action actually works.
+- Run `demo.ipynb` top to bottom in the browser once, so the notebook path
+  itself (not just the act scripts run directly) is verified before going
+  live.
 
 ## Fallbacks
+
+If you created a `stack/.env.local` to override ports, append
+`--env-file stack/.env.local` to the plain-compose command below.
 
 If the backend or web container misbehaves mid-demo, try an in-place
 restart before anything more drastic:

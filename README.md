@@ -7,8 +7,12 @@ nothing to install beyond Docker.
 
 ## Requirements
 
-Docker Desktop. Nothing else needs to be on your machine; the demo's terminal
-lives inside JupyterLab, running in a container this stack builds for you.
+- Docker Desktop.
+- `curl` (preinstalled on macOS and Linux).
+- `jq`, but only if you plan to use `setup/reset.sh`.
+
+Nothing else needs to be on your machine; the demo's terminal lives inside
+JupyterLab, running in a container this stack builds for you.
 
 ## Quickstart
 
@@ -18,17 +22,22 @@ cd webinar-demo
 bash setup/preflight.sh
 ```
 
-`preflight.sh` checks for `docker`, `jq`, and `curl`, pulls the pinned
-images, builds the Jupyter container, brings the stack up, waits for the
-backend to report healthy, and waits for a one-shot `seed` service to finish
-configuring the registry and warming its caches. It prints the three URLs
-you need when it's done.
+`preflight.sh` checks for `docker` and `curl` (and warns if `jq` is missing,
+since only `setup/reset.sh` needs it), pulls the pinned images, builds the
+Jupyter container, brings the stack up, waits for the backend to report
+healthy, and waits for a one-shot `seed` service to finish configuring the
+registry and warming its caches. It prints the three URLs you need when it's
+done.
 
 Plain Compose works too, if you'd rather skip the wrapper:
 
 ```bash
 docker compose --env-file stack/.env -f stack/docker-compose.yml up -d --build
 ```
+
+If you created a `stack/.env.local` to override ports (see "URLs and ports"
+below), append `--env-file stack/.env.local` to every plain-compose command
+in this doc.
 
 Either way, the registry configures itself and its caches warm up
 automatically: the `seed` service does that on every `up`, and it's
@@ -69,9 +78,11 @@ findings on bytes that were never re-downloaded, and a CycloneDX SBOM comes
 back for that same cached artifact. Flipping on scan-aware serving for the
 proxy is a live, one-call change, and it immediately blocks that cached file
 for every consumer. A blast-radius query against a known CVE answers who has
-it, who actually pulled it, and who could have based on their access. Then a
-clean artifact with no findings anywhere gets quarantined by hand, on a
-stated reason, showing that a hold does not require a scan finding at all.
+it, who actually pulled it, and who could have based on their access; it
+shows real data only after Act 1 step 3 has run, since that step is what
+publishes the CVE-affected artifact the query looks for. Then a clean
+artifact with no findings anywhere gets quarantined by hand, on a stated
+reason, showing that a hold does not require a scan finding at all.
 
 **Act 3: do not be there next time.** A package released within the last 14
 days is invisible to pip entirely; hitting the file directly returns 451
@@ -102,6 +113,9 @@ so this is safe to keep local to your machine.
 
 ## Start over
 
+`setup/reset.sh` runs on the host, not inside a container: it needs `docker`
+itself, since it uses `docker exec` to reach the stack's database container.
+
 To reset the registry's policies and repositories back to a clean starting
 point without tearing down the stack:
 
@@ -116,6 +130,9 @@ For a fully pristine stack, wipe the volumes and rebuild from nothing:
 docker compose --env-file stack/.env -f stack/docker-compose.yml down -v
 bash setup/preflight.sh
 ```
+
+If you created a `stack/.env.local`, append `--env-file stack/.env.local` to
+the plain-compose commands above too.
 
 The full wipe is the only way to see Act 2's proxy cache go back to
 `not_scanned`: the scan state recorded on cached artifacts persists across

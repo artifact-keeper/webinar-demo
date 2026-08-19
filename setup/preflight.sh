@@ -15,9 +15,10 @@ compose_args=(--env-file stack/.env)
 compose_args+=(-f stack/docker-compose.yml)
 
 echo "== Tool checks =="
-for tool in docker jq curl; do
+for tool in docker curl; do
   command -v "$tool" >/dev/null || { echo "MISSING: $tool"; exit 1; }
 done
+command -v jq >/dev/null || echo "WARNING: jq not found; setup/reset.sh needs it, everything else works without it"
 
 echo "== Pull images =="
 docker compose "${compose_args[@]}" pull scan-workspace-init postgres opensearch trivy backend web \

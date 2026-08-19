@@ -13,6 +13,8 @@
 set -uo pipefail   # deliberately no -e: a 4xx/5xx response IS the demo
 source "$(dirname "$0")/../setup/lib.sh"
 
+[ -n "${PIP_INDEX_URL:-}" ] || { echo "Run this inside the JupyterLab terminal (see README)."; exit 1; }
+
 PIP_INDEX="${PIP_INDEX_URL:-${AK_URL}/pypi/pypi-proxy/simple}"
 
 DL=$(mktemp -d); trap 'rm -rf "$DL"' EXIT
