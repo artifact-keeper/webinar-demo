@@ -45,6 +45,33 @@ if [ -z "$healthy" ]; then
 fi
 
 echo "Backend healthy."
+
+echo "== Wait for seed =="
+seed_container="${AK_NAME_PREFIX:-webinar-demo}-seed"
+seed_done=""
+for i in $(seq 1 300); do
+  status=$(docker inspect -f '{{.State.Status}} {{.State.ExitCode}}' "$seed_container" 2>/dev/null || true)
+  if [ "${status%% *}" = "exited" ]; then
+    seed_done=1
+    break
+  fi
+  sleep 2
+done
+
+if [ -z "$seed_done" ]; then
+  echo "Seed did not finish within 10 minutes"
+  exit 1
+fi
+
+seed_exit="${status##* }"
+if [ "$seed_exit" = "0" ]; then
+  echo "Seed complete."
+else
+  echo "Seed failed (exit $seed_exit). Last 40 lines of seed logs:"
+  docker logs --tail 40 "$seed_container"
+  exit 1
+fi
+
 echo
 echo "API:      ${AK_URL}"
 echo "Web:      ${AK_WEB_URL}"

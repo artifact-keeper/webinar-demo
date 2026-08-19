@@ -207,6 +207,30 @@ services:
       - ../:/home/jovyan/work
     restart: unless-stopped
 
+  # ---------------------------------------------------------------------------
+  # Seeder (one-shot)
+  # ---------------------------------------------------------------------------
+  # Configures the registry and warms the caches on every compose up, so a
+  # plain `docker compose up` lands on a demo-ready stack. Both steps are
+  # idempotent; repeat runs are fast no-ops. Uses the same image as the
+  # jupyter service, so nothing extra is built or pulled.
+  seed:
+    build: ./jupyter
+    container_name: ${AK_NAME_PREFIX:-webinar-demo}-seed
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      AK_URL: http://backend:8080
+      PIP_INDEX_URL: http://backend:8080/pypi/pypi-proxy/simple
+      PIP_TRUSTED_HOST: backend
+      HF_ENDPOINT: http://backend:8080/huggingface/hf-proxy
+      HF_HOME: /home/jovyan/work/.hf-cache
+    entrypoint: ["bash", "/home/jovyan/work/setup/seed.sh"]
+    volumes:
+      - ../:/home/jovyan/work
+    restart: "no"
+
 volumes:
   postgres_data:
     driver: local
