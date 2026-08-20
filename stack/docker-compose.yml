@@ -144,6 +144,22 @@ services:
       RUST_LOG: info,artifact_keeper=debug
       HOST: 0.0.0.0
       PORT: 8080
+      # RATE_LIMIT_EXEMPT_USERNAMES does NOT cover this: exemption-by-username
+      # is only checked against an already-authenticated request (it reads
+      # the JWT-derived AuthExtension from request extensions), and the
+      # login endpoint is inherently pre-authentication, so that exemption
+      # path never even runs for POST /auth/login (verified by reading
+      # backend/src/api/middleware/rate_limit.rs's is_exempt/
+      # check_rate_limit_exemptions). The login limiter is 10 attempts per
+      # (username, IP) per 15 minutes -- fine in production, but easy to
+      # trip during repeated local rehearsal, where act scripts and ad-hoc
+      # debugging both call ak_login from fresh shells with no shared token.
+      # This is a local-only demo stack behind no public exposure at all
+      # (never bound to anything but localhost), which is exactly the
+      # "internal-only / VPN-gated deployment" case RATE_LIMIT_ENABLED's own
+      # doc comment names as the intended opt-out use case, so disable rate
+      # limiting entirely here rather than fight per-endpoint exemptions.
+      RATE_LIMIT_ENABLED: "false"
     ports:
       - "${AK_API_PORT:-8080}:8080"
     volumes:

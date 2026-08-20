@@ -7,4 +7,11 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends jq \
  && rm -rf /var/lib/apt/lists/*
 USER ${NB_UID}
-RUN pip install --no-cache-dir "huggingface_hub[cli]==1.28.0"
+# pyyaml is not a declared dependency of huggingface_hub[cli]==1.28.0, but
+# its CLI (huggingface_hub/utils/_fixes.py's WeakFileLock) imports it
+# unconditionally on some code paths -- `hf download` crashes with
+# ModuleNotFoundError: No module named 'yaml' on a base image that doesn't
+# happen to carry it transitively (verified: quay.io/jupyter/minimal-notebook
+# does not). Pin it explicitly rather than rely on an undeclared transitive
+# dependency that can vanish on any base-image or huggingface_hub bump.
+RUN pip install --no-cache-dir "huggingface_hub[cli]==1.28.0" pyyaml
