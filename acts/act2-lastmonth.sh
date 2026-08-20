@@ -130,11 +130,15 @@ echo "\$ GET /api/v1/admin/security/cve/CVE-2020-14343/blast-radius"
 ak_api GET "/api/v1/admin/security/cve/CVE-2020-14343/blast-radius" \
   | jq '{summary, proxy_exposure, affected_repos: [.affected_repos[] | {repository_key, access_scope}], downloaders: [.downloaders[] | {username, download_count, last_download}]}'
 echo
-echo "EXPECTED: the hosted summary is what matters here -- affected artifacts"
-echo "and repos in team-packages, who actually pulled it, and the latent radius"
-echo "(who could have, based on access). Proxied download counts are not"
-echo "recorded in this release (a known gap), so proxy_exposure above is shown"
-echo "as-is but is not a claim this script is making. Same view in the UI:"
+echo "EXPECTED: 'downloaders' is your real, itemized who-pulled-it list --"
+echo "artifact-keyed hosted downloads, attributable to a user or IP. Point at"
+echo "that for 'who is actually exposed.' proxy_exposure is real too, not a"
+echo "placeholder -- it's genuinely recorded (download_count above is a real"
+echo "aggregate over every proxy pull of a digest carrying this CVE) -- but"
+echo "it's tracked by content digest, not by artifact id, so it has no join"
+echo "key back to a person or IP. Present it as 'how widely this is cached"
+echo "and how many pulls, in aggregate,' never as a downloader list -- there"
+echo "isn't one to show. Same summary+downloaders view in the UI:"
 echo "  ${AK_WEB_URL}/security/blast-radius"
 pause
 fi
