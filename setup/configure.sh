@@ -77,4 +77,25 @@ else
   echo "global scan policy already exists"
 fi
 
+echo "== Virtual repository (Act 4): pypi-unified, fronting pypi-proxy + team-packages =="
+# PEP 708 isolation: a name a LOCAL member owns is hidden from the merged
+# index for any REMOTE member at a WORSE (higher-number) priority. Local
+# must win, so team-packages gets the lower number.
+create_repo pypi-unified "PyPI (unified)" pypi virtual
+
+add_member() { # virtual_repo_key member_key priority
+  local vrepo="$1" member="$2" priority="$3"
+  local existing
+  existing=$(ak_api GET "/api/v1/repositories/${vrepo}/members" \
+    | jq -r --arg m "$member" '.members // [] | map(select(.member_repo_key==$m)) | length')
+  if [ "$existing" = "0" ]; then
+    ak_api POST "/api/v1/repositories/${vrepo}/members" \
+      "{\"member_key\":\"${member}\",\"priority\":${priority}}" | jq -c '{member_repo_key, priority}'
+  else
+    echo "member ${member} on ${vrepo}: already attached"
+  fi
+}
+add_member pypi-unified team-packages 0
+add_member pypi-unified pypi-proxy 10
+
 echo "CONFIGURED: registry ready for the demo."

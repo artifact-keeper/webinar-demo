@@ -8,6 +8,12 @@ source "$(dirname "$0")/lib.sh"
 ak_login || exit 1
 export AK_API_ALLOW_FAIL=1
 
+echo "== Delete pypi-unified virtual repository (Act 4) =="
+# Must come before team-packages is deleted below: pypi-unified holds a
+# virtual_repo_members row referencing team-packages, so tearing down
+# team-packages first while still referenced risks a foreign-key conflict.
+ak_api DELETE /api/v1/repositories/pypi-unified >/dev/null; echo deleted
+
 echo "== Delete team-packages (live-created repo) =="
 ak_api DELETE /api/v1/repositories/team-packages >/dev/null; echo deleted
 
