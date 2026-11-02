@@ -1,5 +1,12 @@
 # webinar-demo
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/artifact-keeper/.github/main/brand/logo-horizontal-dark.png">
+    <img alt="Artifact Keeper" src="https://raw.githubusercontent.com/artifact-keeper/.github/main/brand/logo-horizontal-light.png" width="360">
+  </picture>
+</p>
+
 This is the demo from the "Ungating the Supply Chain" webinar: three short acts
 showing [Artifact Keeper](https://github.com/artifact-keeper/artifact-keeper)
 gating a package registry in real time. It runs end to end on a laptop, with
